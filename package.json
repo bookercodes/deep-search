@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:push": "drizzle-kit push"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.1",
@@ -24,9 +25,11 @@
     "@radix-ui/react-use-controllable-state": "^1.2.2",
     "@xyflow/react": "^12.10.0",
     "ai": "^6.0.3",
+    "better-sqlite3": "^12.5.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "drizzle-orm": "^0.45.1",
     "embla-carousel-react": "^8.6.0",
     "lucide-react": "^0.562.0",
     "motion": "^12.23.26",
@@ -38,13 +41,16 @@
     "streamdown": "^1.6.10",
     "tailwind-merge": "^3.4.0",
     "tokenlens": "^1.3.1",
-    "use-stick-to-bottom": "^1.1.1"
+    "use-stick-to-bottom": "^1.1.1",
+    "zod": "^4.2.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "drizzle-kit": "^0.31.8",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "tailwindcss": "^4",
