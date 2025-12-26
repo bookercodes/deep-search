@@ -11,6 +11,9 @@ import {
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { messages as messagesTable } from "@/lib/db/schema";
+import Exa from "exa-js";
+
+const exa = new Exa(process.env.EXA_API_KEY);
 
 // Allow streaming responses up to 30 seconds
 export const maxDuration = 30;
@@ -32,6 +35,7 @@ export async function POST(req: Request) {
   const stream = createUIMessageStream({
     execute: async ({ writer }) => {
       const result = streamText({
+        experimental_telemetry: { isEnabled: true },
         model: openai("gpt-5"),
         providerOptions: {
           openai: {
@@ -39,7 +43,7 @@ export async function POST(req: Request) {
             reasoningEffort: "low",
           },
         },
-        system: `You are a helpful AI assistant with access to real-time web search capabilities. When answering questions:
+        system: `You are a helpful AI assistant with access to real-time web search capabilities. The current date and time is ${new Date().toLocaleString()}. When answering questions:
 
 1. Always search the web for up-to-date information when relevant
 2. ALWAYS format URLs as markdown links using the format [title](url)
@@ -47,26 +51,51 @@ export async function POST(req: Request) {
 4. If you're unsure about something, search the web to verify
 5. When providing information, always include the source where you found it using markdown links
 6. Never include raw URLs - always use markdown link format
+7. When users ask for up-to-date information, use the current date to provide context about how recent the information is
+8. IMPORTANT: After finding relevant URLs from search results, ALWAYS use the crawlPages tool to get the full content of those pages. Never rely solely on search snippets.
 
-Remember to use the searchWeb tool whenever you need to find current information.`,
-        stopWhen: stepCountIs(5),
+Your workflow should be:
+1. Use searchWeb to find 10 relevant URLs from diverse sources (news sites, blogs, official documentation, etc.)
+2. Select 4-6 of the most relevant and diverse URLs to crawl
+3. Use crawlPages to get the full content of those URLs
+4. Use the full content to provide detailed, accurate answers
+
+Remember to:
+- Always crawl multiple sources (4-6 URLs) for each query
+- Choose diverse sources (e.g., not just news sites or just blogs)
+- Prioritize official sources and authoritative websites
+- Use the full content to provide comprehensive answers`,
+        stopWhen: stepCountIs(15),
         messages: await convertToModelMessages(messages),
         tools: {
-          searchWeb: openai.tools.webSearch({
-            userLocation: {
-              city: "London",
-              country: "GB",
-              type: "approximate",
+          searchWeb: tool({
+            description: "Search the web for information",
+            inputSchema: z.object({
+              query: z.string().describe("The query to search the web for"),
+            }),
+            execute: async ({ query }) => {
+              const result = await exa.search(query, {
+                numResults: 10,
+                contents: false,
+              });
+              return result.results;
             },
           }),
-          calculate: tool({
-            description: "",
+          crawlPages: tool({
+            description:
+              "Crawl web pages to get their full content. Pass ALL URLs you want to crawl in a single call",
             inputSchema: z.object({
-              expression: z.string(),
+              urls: z
+                .array(z.string())
+                .describe(
+                  "Array of URLs to crawl (batch multiple URLs in one call for efficiency)",
+                ),
             }),
-            execute: ({ expression }) => {
-              const result = Function(`"use strict"; return (${expression})`)();
-              return { expression, result };
+            execute: async ({ urls }) => {
+              const result = await exa.getContents(urls, {
+                text: true,
+              });
+              return result;
             },
           }),
         },

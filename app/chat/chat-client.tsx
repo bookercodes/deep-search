@@ -37,9 +37,12 @@ interface ChatClientProps {
   initialMessages: UIMessage[];
 }
 
-function renderPart(part: UIMessagePart | ToolUIPart, index: number, isStreaming: boolean) {
+function renderPart(
+  part: UIMessagePart | ToolUIPart,
+  index: number,
+  isStreaming: boolean,
+) {
   if (isStaticToolUIPart(part)) {
-    console.log("Tool part:", JSON.stringify(part, null, 2));
     return (
       <Tool key={index}>
         <ToolHeader
@@ -95,7 +98,7 @@ export function ChatClient({ initialMessages }: ChatClientProps) {
               <Message key={message.id} from={message.role}>
                 <MessageContent>
                   {message.parts.map((part, index) =>
-                    renderPart(part, index, isStreaming)
+                    renderPart(part, index, isStreaming),
                   )}
                 </MessageContent>
               </Message>
@@ -119,10 +122,7 @@ export function ChatClient({ initialMessages }: ChatClientProps) {
           />
           <PromptInputFooter>
             <PromptInputTools />
-            <PromptInputSubmit
-              status={status}
-              disabled={status !== "ready"}
-            />
+            <PromptInputSubmit status={status} disabled={status !== "ready"} />
           </PromptInputFooter>
         </PromptInput>
       </div>
