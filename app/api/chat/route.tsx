@@ -173,6 +173,9 @@ export async function runAgentLoop(
   console.log("\n=== runAgentLoop started ===");
   console.log(`Processing ${messages.length} message(s)`);
 
+  // Start a new message - all subsequent parts will go into this single message
+  writer.write({ type: "start" });
+
   const context = new SystemContext(messages);
   let step = 0;
 
@@ -193,10 +196,14 @@ export async function runAgentLoop(
     console.log(`Action: ${nextAction.type}`);
     console.log(`Reasoning: ${nextAction.reasoning}`);
 
-    // Emit reasoning events
+    // Emit reasoning events wrapped in a step
     const reasoningId = `reasoning-${step}`;
     writer.write({ type: "reasoning-start", id: reasoningId });
-    writer.write({ type: "reasoning-delta", id: reasoningId, delta: nextAction.reasoning });
+    writer.write({
+      type: "reasoning-delta",
+      id: reasoningId,
+      delta: nextAction.reasoning,
+    });
     writer.write({ type: "reasoning-end", id: reasoningId });
 
     if (nextAction.type === "search") {
