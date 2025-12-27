@@ -1,6 +1,7 @@
 import { openai } from "@ai-sdk/openai";
 import {
   UIMessage,
+  UIMessageStreamWriter,
   streamText,
   createUIMessageStream,
   createUIMessageStreamResponse,
@@ -165,7 +166,10 @@ ${context.getCrawlHistory()}`,
   });
 }
 
-export async function runAgentLoop(messages: UIMessage[]) {
+export async function runAgentLoop(
+  messages: UIMessage[],
+  writer: UIMessageStreamWriter,
+) {
   console.log("\n=== runAgentLoop started ===");
   console.log(`Processing ${messages.length} message(s)`);
 
@@ -188,6 +192,12 @@ export async function runAgentLoop(messages: UIMessage[]) {
     const nextAction = await getNextAction(context);
     console.log(`Action: ${nextAction.type}`);
     console.log(`Reasoning: ${nextAction.reasoning}`);
+
+    // Emit reasoning events
+    const reasoningId = `reasoning-${step}`;
+    writer.write({ type: "reasoning-start", id: reasoningId });
+    writer.write({ type: "reasoning-delta", id: reasoningId, delta: nextAction.reasoning });
+    writer.write({ type: "reasoning-end", id: reasoningId });
 
     if (nextAction.type === "search") {
       console.log(`Searching for: "${nextAction.query}"`);
@@ -225,7 +235,7 @@ export async function POST(req: Request) {
 
   const stream = createUIMessageStream({
     execute: async ({ writer }) => {
-      const result = await runAgentLoop(messages);
+      const result = await runAgentLoop(messages, writer);
       writer.merge(result.toUIMessageStream());
     },
   });

@@ -10,7 +10,8 @@
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^3.0.1",
+    "@ai-sdk/devtools": "^0.0.2",
+    "@ai-sdk/openai": "3.0.0-beta.112",
     "@ai-sdk/react": "^3.0.3",
     "@braintrust/otel": "^0.1.2",
     "@radix-ui/react-collapsible": "^1.1.12",
@@ -26,7 +27,7 @@
     "@radix-ui/react-use-controllable-state": "^1.2.2",
     "@vercel/otel": "^2.1.0",
     "@xyflow/react": "^12.10.0",
-    "ai": "^6.0.3",
+    "ai": "6.0.0-beta.169",
     "better-sqlite3": "^12.5.0",
     "braintrust": "^1.1.0",
     "class-variance-authority": "^0.7.1",
