@@ -10,10 +10,13 @@ import {
 } from "ai";
 import { z } from "zod";
 import Exa from "exa-js";
+import { db } from "@/lib/db";
+import { messages as messagesTable } from "@/lib/db/schema";
 
 const exa = new Exa(process.env.EXA_API_KEY);
 
 export const maxDuration = 30;
+const USER_ID = "usr_booker";
 
 type SearchResult = {
   id: string;
@@ -239,11 +242,25 @@ export async function runAgentLoop(
 
 export async function POST(req: Request) {
   const { messages }: { messages: UIMessage[] } = await req.json();
-
+  const lastMessage = messages[messages.length - 1];
+  await db.insert(messagesTable).values({
+    id: lastMessage.id,
+    userId: USER_ID,
+    role: "user",
+    parts: lastMessage.parts,
+  });
   const stream = createUIMessageStream({
     execute: async ({ writer }) => {
       const result = await runAgentLoop(messages, writer);
       writer.merge(result.toUIMessageStream());
+    },
+    onFinish: async ({ responseMessage }) => {
+      await db.insert(messagesTable).values({
+        id: responseMessage.id,
+        userId: USER_ID,
+        role: "assistant",
+        parts: responseMessage.parts,
+      });
     },
   });
 
