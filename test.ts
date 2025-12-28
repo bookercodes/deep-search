@@ -2,7 +2,7 @@ import "dotenv/config";
 import { rewriteQuery } from "./app/api/chat/route";
 
 async function main() {
-  const query = "North Wales crash";
+  const query = "best commuter bike for Londoners 2025?";
 
   console.log("Original query:", query);
   console.log("\nGenerating search queries...\n");

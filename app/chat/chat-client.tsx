@@ -19,6 +19,12 @@ import {
   ToolOutput,
 } from "@/components/ai-elements/tool";
 import {
+  Sources,
+  SourcesTrigger,
+  SourcesContent,
+  Source,
+} from "@/components/ai-elements/sources";
+import {
   Conversation,
   ConversationContent,
   ConversationScrollButton,
@@ -72,6 +78,8 @@ function renderPart(
           <ReasoningContent>{part.text}</ReasoningContent>
         </Reasoning>
       );
+    case "source-url":
+      return null; // Handled separately
     default:
       console.log("Unknown part type:", part);
       return null;
@@ -94,11 +102,25 @@ export function ChatClient({ initialMessages }: ChatClientProps) {
             const isLastMessage = messageIndex === messages.length - 1;
             const isStreaming = isLastMessage && status === "streaming";
 
+            const sources = message.parts.filter(
+              (part) => part.type === "source-url",
+            ) as Array<{ type: "source-url"; url: string; title?: string }>;
+
             return (
               <Message key={message.id} from={message.role}>
                 <MessageContent>
                   {message.parts.map((part, index) =>
                     renderPart(part, index, isStreaming),
+                  )}
+                  {sources.length > 0 && !isStreaming && (
+                    <Sources>
+                      <SourcesTrigger count={sources.length} />
+                      <SourcesContent>
+                        {sources.map((source, i) => (
+                          <Source key={i} href={source.url} title={source.title} />
+                        ))}
+                      </SourcesContent>
+                    </Sources>
                   )}
                 </MessageContent>
               </Message>

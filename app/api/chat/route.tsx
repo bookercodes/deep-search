@@ -15,6 +15,7 @@ import { z } from "zod";
 
 import Exa from "exa-js";
 import { db } from "@/lib/db";
+import { log } from "console";
 
 const exa = new Exa(process.env.EXA_API_KEY);
 const USER_ID = "usr_booker";
@@ -129,13 +130,19 @@ class SystemContext {
   }
 
   getSearchHistory(): string {
-    return this.searchHistory.map((r) => `- ${r.title}: ${r.url}`).join("\n");
+    const searchHistory = this.searchHistory.map((r) => `- ${r.title}: ${r.url}`).join("\n");
+    console.log(searchHistory);
+    return searchHistory;
   }
 
   getCrawlHistory(): string {
     return this.crawlHistory
       .map((r) => `## ${r.title}\n${r.url}\n\n${r.text}`)
       .join("\n\n---\n\n");
+  }
+
+  getCrawlResults(): CrawlResult[] {
+    return this.crawlHistory;
   }
 
   getMessageHistory(): string {
@@ -236,6 +243,7 @@ export async function runAgentLoop(
 ) {
   console.log("\n=== runAgentLoop started ===");
   console.log(`Processing ${messages.length} message(s)`);
+  writer.write({ type: "start" });
 
   const context = new SystemContext(messages);
   let step = 0;
@@ -292,7 +300,12 @@ export async function runAgentLoop(
     if (nextAction.type === "answer") {
       console.log("\n=== Generating answer ===");
       const result = answerQuestion(context);
-      writer.merge(result.toUIMessageStream());
+      await writer.merge(result.toUIMessageStream());
+
+      // Write sources from crawled content
+      for (const result of context.getCrawlResults()) {
+        writer.write({ type: "source-url", sourceId: result.id, url: result.url, title: result.title ?? undefined });
+      }
       return;
     }
 
@@ -301,19 +314,24 @@ export async function runAgentLoop(
 
   console.log("\n=== Loop exhausted, generating best-effort answer ===");
   const result = answerQuestion(context, true);
-  writer.merge(result.toUIMessageStream());
+  await writer.merge(result.toUIMessageStream());
+
+  // Write sources from crawled content
+  for (const result of context.getCrawlResults()) {
+    writer.write({ type: "source-url", sourceId: result.id, url: result.url, title: result.title ?? undefined });
+  }
 }
 
 export async function POST(req: Request) {
   const { messages }: { messages: UIMessage[] } = await req.json();
   // Save the latest user message
   const lastMessage = messages[messages.length - 1];
-  await db.insert(messagesTable).values({
-    id: lastMessage.id,
-    userId: USER_ID,
-    role: "user",
-    parts: lastMessage.parts,
-  });
+  // await db.insert(messagesTable).values({
+  //   id: lastMessage.id,
+  //   userId: USER_ID,
+  //   role: "user",
+  //   parts: lastMessage.parts,
+  // });
 
   const stream = createUIMessageStream({
     execute: async ({ writer }) => {
