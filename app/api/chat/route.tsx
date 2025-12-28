@@ -1,22 +1,25 @@
+import { messages as messagesTable } from "@/lib/db/schema";
 import { openai } from "@ai-sdk/openai";
 import {
   UIMessage,
   UIMessageStreamWriter,
   streamText,
-  createUIMessageStream,
-  createUIMessageStreamResponse,
   generateText,
   Output,
+  createUIMessageStream,
+  createUIMessageStreamResponse,
+  wrapLanguageModel,
 } from "ai";
+import { devToolsMiddleware } from "@ai-sdk/devtools";
 import { z } from "zod";
+
 import Exa from "exa-js";
 import { db } from "@/lib/db";
-import { messages as messagesTable } from "@/lib/db/schema";
 
 const exa = new Exa(process.env.EXA_API_KEY);
+const USER_ID = "usr_booker";
 
 export const maxDuration = 30;
-const USER_ID = "usr_booker";
 
 type SearchResult = {
   id: string;
@@ -54,6 +57,58 @@ const actionSchema = z.object({
 });
 
 type Action = z.infer<typeof actionSchema>;
+
+const queryRewriterSchema = z.object({
+  plan: z
+    .string()
+    .describe("A detailed plan of how to approach answering the question."),
+  queries: z
+    .array(z.string())
+    .describe("A list of search queries to execute in parallel."),
+});
+
+export async function rewriteQuery(initialQuery: string) {
+  const today = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const result = await generateText({
+    model: openai("gpt-4o"),
+    output: Output.object({ schema: queryRewriterSchema }),
+    system: `Today's date is ${today}.
+
+You are a strategic research planner with expertise in breaking down complex questions into logical search steps. Your primary role is to create a detailed research plan before generating any search queries.
+
+First, analyze the question thoroughly:
+
+- Break down the core components and key concepts
+- Identify any implicit assumptions or context needed
+- Consider what foundational knowledge might be required
+- Think about potential information gaps that need filling
+
+Then, develop a strategic research plan that:
+
+- Outlines the logical progression of information needed
+- Identifies dependencies between different pieces of information
+- Considers multiple angles or perspectives that might be relevant
+- Anticipates potential dead-ends or areas needing clarification
+
+Finally, translate this plan into a numbered list of 3-5 sequential search queries that:
+
+- Are specific and focused (avoid broad queries that return general information)
+- Are written in natural language without Boolean operators (no AND/OR)
+- Progress logically from foundational to specific information
+- Build upon each other in a meaningful way
+
+Remember that initial queries can be exploratory - they help establish baseline information or verify assumptions before proceeding to more targeted searches. Each query should serve a specific purpose in your overall research plan.`,
+    prompt: initialQuery,
+  });
+
+  return result.output!;
+}
 
 class SystemContext {
   private step = 0;
@@ -110,7 +165,10 @@ async function getNextAction(context: SystemContext): Promise<Action> {
   });
 
   const result = await generateText({
-    model: openai("gpt-4o"),
+    model: wrapLanguageModel({
+      model: openai("gpt-4o"),
+      middleware: devToolsMiddleware(),
+    }),
     output: Output.object({ schema: actionSchema }),
     system: `You are a helpful AI assistant that can search the web, crawl URLs, or answer questions. Your goal is to determine the next best action to take based on the current context.
 
@@ -146,7 +204,10 @@ IMPORTANT: Do not use 'answer' until you have crawled at least some URLs. Search
 
 function answerQuestion(context: SystemContext, exhausted: boolean = false) {
   return streamText({
-    model: openai("gpt-4o"),
+    model: wrapLanguageModel({
+      model: openai("gpt-4o"),
+      middleware: devToolsMiddleware(),
+    }),
     system: `You are a helpful AI assistant that answers questions based on the information gathered from web searches and crawled content.
 
 When answering:
@@ -176,9 +237,6 @@ export async function runAgentLoop(
   console.log("\n=== runAgentLoop started ===");
   console.log(`Processing ${messages.length} message(s)`);
 
-  // Start a new message - all subsequent parts will go into this single message
-  writer.write({ type: "start" });
-
   const context = new SystemContext(messages);
   let step = 0;
 
@@ -199,14 +257,17 @@ export async function runAgentLoop(
     console.log(`Action: ${nextAction.type}`);
     console.log(`Reasoning: ${nextAction.reasoning}`);
 
-    // Emit reasoning events wrapped in a step
+    // Emit reasoning events
     const reasoningId = `reasoning-${step}`;
+    console.log(`[STREAM] Writing reasoning-start for ${reasoningId}`);
     writer.write({ type: "reasoning-start", id: reasoningId });
+    console.log(`[STREAM] Writing reasoning-delta for ${reasoningId}`);
     writer.write({
       type: "reasoning-delta",
       id: reasoningId,
       delta: nextAction.reasoning,
     });
+    console.log(`[STREAM] Writing reasoning-end for ${reasoningId}`);
     writer.write({ type: "reasoning-end", id: reasoningId });
 
     if (nextAction.type === "search") {
@@ -230,18 +291,22 @@ export async function runAgentLoop(
 
     if (nextAction.type === "answer") {
       console.log("\n=== Generating answer ===");
-      return answerQuestion(context);
+      const result = answerQuestion(context);
+      writer.merge(result.toUIMessageStream());
+      return;
     }
 
     context.incrementStep();
   }
 
   console.log("\n=== Loop exhausted, generating best-effort answer ===");
-  return answerQuestion(context, true);
+  const result = answerQuestion(context, true);
+  writer.merge(result.toUIMessageStream());
 }
 
 export async function POST(req: Request) {
   const { messages }: { messages: UIMessage[] } = await req.json();
+  // Save the latest user message
   const lastMessage = messages[messages.length - 1];
   await db.insert(messagesTable).values({
     id: lastMessage.id,
@@ -249,20 +314,13 @@ export async function POST(req: Request) {
     role: "user",
     parts: lastMessage.parts,
   });
+
   const stream = createUIMessageStream({
     execute: async ({ writer }) => {
-      const result = await runAgentLoop(messages, writer);
-      writer.merge(result.toUIMessageStream());
-    },
-    onFinish: async ({ responseMessage }) => {
-      await db.insert(messagesTable).values({
-        id: responseMessage.id,
-        userId: USER_ID,
-        role: "assistant",
-        parts: responseMessage.parts,
-      });
+      await runAgentLoop(messages, writer);
     },
   });
 
   return createUIMessageStreamResponse({ stream });
 }
+

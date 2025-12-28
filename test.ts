@@ -1,28 +1,20 @@
 import "dotenv/config";
-import { runAgentLoop } from "./app/api/chat/route";
+import { rewriteQuery } from "./app/api/chat/route";
 
 async function main() {
-  const messages = [
-    {
-      id: "1",
-      role: "user" as const,
-      parts: [
-        {
-          type: "text" as const,
-          text: "what is the best electric commuter bike for Londoners?",
-        },
-      ],
-    },
-  ];
+  const query = "North Wales crash";
 
-  console.log("runAgentLoop() called");
-  const result = await runAgentLoop(messages);
+  console.log("Original query:", query);
+  console.log("\nGenerating search queries...\n");
 
-  for await (const chunk of result.textStream) {
-    process.stdout.write(chunk);
-  }
+  const result = await rewriteQuery(query);
 
-  console.log("\n\nDone!");
+  console.log("Plan:");
+  console.log(result.plan);
+  console.log("\nGenerated queries:");
+  result.queries.forEach((q, i) => console.log(`${i + 1}. ${q}`));
+
+  console.log("\nDone!");
 }
 
 main().catch(console.error);
